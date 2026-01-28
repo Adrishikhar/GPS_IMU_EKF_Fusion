@@ -4,7 +4,7 @@ A high-performance **16-state Extended Kalman Filter (EKF)** implementation for 
 
 ---
 
-## State Vector Definition
+## 🛰️ State Vector Definition
 
 The filter maintains a 16-element state vector $x$:
 
@@ -18,26 +18,40 @@ The filter maintains a 16-element state vector $x$:
 
 ---
 
-## Core Features
+## 📂 Project Structure
 
-- **Nonlinear Kinematics:** Uses first-order quaternion integration to avoid Euler angle singularities (Gimbal Lock).
-- **Coordinate Projection:** Converts Geodetic LLA (Lat, Lon, Alt) to a local NED tangent plane using a Flat-Earth model.
-- **Real-time NMEA Stream:** Generates standardized `$GPRMC` strings with automatic checksum calculation and NaN protection.
-- **Bias Tracking:** Dynamically estimates sensor null-shifts to improve dead-reckoning accuracy.
+| File                       | Description                                                                                                                  |
+| :------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| **`fusion.py`**            | Main entry point. Manages the EKF loop, data synchronization, initialization from first GPS fix, and performance plotting.   |
+| **`ekf_models.py`**        | Core EKF math: Nonlinear state transition ($f$), measurement model ($h$), and the full Jacobians ($F, H$).                   |
+| **`utility_functions.py`** | Helper functions for quaternion algebra, coordinate projections (LLA to NED), NMEA string generation, and RMSE calculations. |
+| **`imu_gps_log.mat`**      | Raw sensor dataset containing synchronized IMU and GPS logs.                                                                 |
+| **`requirements.txt`**     | Dependency list (NumPy, SciPy, Matplotlib, FilterPy).                                                                        |
 
----
-
-## Mathematical Framework
+## 📐 Mathematical Framework
 
 ### 1. Prediction (IMU Integration)
 
-The state propagates using raw IMU control inputs $u = [\omega, a]$:
-$$x_{k+1} = f(x_k, u_k, \Delta t)$$
-Gravity is rotated into the navigation frame and compensated for in the velocity update.
+The state propagates using the basic Euler integration method.
 
 ### 2. Correction (GPS Update)
 
 When a GPS fix is detected, the filter performs a measurement update:
 
-- **Measurement $z$:** $[p_x, p_y, p_z, v_x, v_y, v_z]^T$
-- **Jacobian $H$:** Maps the 16D state to the 6D measurement space.
+- **Measurement $z$:** $[p_n, p_e, p_d, v_n, v_e, v_d]^T$
+- **Innovation:** $y = z - h(x)$
+- **Update:** The EKF uses the 6D measurement to correct the 16D state via the Kalman Gain.
+
+---
+
+## 🚀 Getting Started
+
+1. **Install Dependencies:**
+
+   ```bash
+   pip install -r requirements.txt
+
+   ```
+
+2. **Run File**
+   python fusion.py
