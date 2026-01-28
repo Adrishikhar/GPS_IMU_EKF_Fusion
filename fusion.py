@@ -72,6 +72,50 @@ import datetime
 
 def generate_nmea_gprmc(timestamp, lat, lon, speed_knots, course_deg):
     """
+    Generates a $GPRMC string
+    """
+    lat_safe = lat if not np.isnan(lat) else 0.0
+    lon_safe = lon if not np.isnan(lon) else 0.0
+    speed_safe = speed_knots if not np.isnan(speed_knots) else 0.0
+    course_safe = course_deg if not np.isnan(course_deg) else 0.0
+    ts_safe = timestamp if not np.isnan(timestamp) else 0.0
+
+    def dec_to_nmea(value, is_lat=True):
+        abs_val = abs(value)
+        degrees = int(abs_val)
+        minutes = (abs_val - degrees) * 60
+        if is_lat:
+            direction = "N" if value >= 0 else "S"
+            return f"{degrees:02d}{minutes:07.4f},{direction}"
+        else:
+            direction = "E" if value >= 0 else "W"
+            return f"{degrees:03d}{minutes:07.4f},{direction}"
+
+    try:
+        dt_obj = datetime.datetime.fromtimestamp(ts_safe)
+        time_str = dt_obj.strftime('%H%M%S')
+        date_str = dt_obj.strftime('%d%m%y')
+    except (ValueError, OSError):
+        time_str = "000000"
+        date_str = "010100"
+    
+    lat_nmea = dec_to_nmea(lat_safe, is_lat=True)
+    lon_nmea = dec_to_nmea(lon_safe, is_lat=False)
+    
+    # Construct message: Status 'A' for valid, 'V' (void) if data was NaN
+    status = "A" if not np.isnan(lat) else "V"
+    
+    msg = f"GPRMC,{time_str},{status},{lat_nmea},{lon_nmea},{speed_safe:.2f},{course_safe:.2f},{date_str},,,A"
+    
+    checksum = 0
+    for char in msg:
+        checksum ^= ord(char)
+    
+    return f"${msg}*{checksum:02X}"
+
+
+def generate_nmea_gprmc(timestamp, lat, lon, speed_knots, course_deg):
+    """
     Generates a $GPRMC string with NaN protection.
     """
     # Replace NaN with 0.0
