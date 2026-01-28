@@ -118,7 +118,8 @@ for k in range(first_fix_idx + 1, N):
     speed_knots = speed_ms * ms_to_knots
     course = np.rad2deg(np.arctan2(vy, vx)) % 360
 
-    nmea_string = uf.generate_nmea_gprmc(timeLog[k]*1e-6, gps_lat[k], gps_lon[k], speed_knots, course)
+    nmea_string = uf.generate_nmea_gpgga(timeLog[k]*1e-6, gps_lat[k], gps_lon[k])
+    # nmea_string = uf.generate_nmea_gprmc(timeLog[k]*1e-6, gps_lat[k], gps_lon[k], speed_knots, course)
     print(nmea_string) 
 
     # Update Step (GPS)

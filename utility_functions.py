@@ -102,6 +102,49 @@ def generate_nmea_gprmc(timestamp, lat, lon, speed_knots, course_deg):
     
     return f"${msg}*{checksum:02X}"
 
+def generate_nmea_gpgga(timestamp, lat, lon, alt=0.0):
+    """
+    Generates a $GPGGA string with the requested precision and formatting.
+    """
+    # Replace NaN with 0.0
+    lat_safe = lat if not np.isnan(lat) else 0.0
+    lon_safe = lon if not np.isnan(lon) else 0.0
+    alt_safe = alt if not np.isnan(alt) else 0.0
+    ts_safe = timestamp if not np.isnan(timestamp) else 0.0
+
+    def dec_to_nmea(value, is_lat=True):
+        abs_val = abs(value)
+        degrees = int(abs_val)
+        minutes = (abs_val - degrees) * 60
+        if is_lat:
+            direction = "N" if value >= 0 else "S"
+            # Lat format: DDMM.MMMMMMM
+            return f"{degrees:02d}{minutes:012.7f},{direction}"
+        else:
+            direction = "E" if value >= 0 else "W"
+            # Lon format: DDDMM.MMMMMMM
+            return f"{degrees:03d}{minutes:012.7f},{direction}"
+
+    try:
+        # Assuming timestamp is Unix. Convert to HHMMSS.SS
+        dt_obj = datetime.datetime.fromtimestamp(ts_safe)
+        time_str = dt_obj.strftime('%H%M%S.00')
+    except:
+        time_str = "000000.00"
+    
+    lat_nmea = dec_to_nmea(lat_safe, is_lat=True)
+    lon_nmea = dec_to_nmea(lon_safe, is_lat=False)
+    
+    # 4 = RTK Fixed (Quality), 13 = Satellites, 1.0 = HDOP
+    # 0.0,M = Altitude, 0.0,M = Geoidal Separation
+    msg = f"GPGGA,{time_str},{lat_nmea},{lon_nmea},4,13,1.00,{alt_safe:.3f},M,0.000,M,0.1,0000"
+    
+    checksum = 0
+    for char in msg:
+        checksum ^= ord(char)
+    
+    return f"${msg}*{checksum:02X}"
+
 def remove_imu_bias(dataLog):
     # Configuration
   bias_samples = 500
