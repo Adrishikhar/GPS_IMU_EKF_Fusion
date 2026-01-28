@@ -54,4 +54,8 @@ When a GPS fix is detected, the filter performs a measurement update:
    ```
 
 2. **Run File**
-   python fusion.py
+
+```bash
+ python fusion.py
+
+```
