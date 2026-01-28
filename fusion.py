@@ -141,14 +141,73 @@ print(f"Position RMSE: {rmse_val:.2f} meters")
 
 
 # ------------------- Geoplot trajectory plot -----------------------------
+# Quick 2D plot without map background
 
-plt.figure(figsize=(8, 8))
-plt.plot(gps_lon[gps_fix], gps_lat[gps_fix], 'r.', label='GPS')
-plt.plot(est_lon, est_lat, 'b-', label='EKF')
-plt.xlabel('Longitude (deg)')
-plt.ylabel('Latitude (deg)')
-plt.title('GPS vs EKF Estimated Trajectory')
-plt.legend()
-plt.grid(True)
-plt.axis('equal')
-plt.show()
+# plt.figure(figsize=(8, 8))
+# plt.plot(gps_lon[gps_fix], gps_lat[gps_fix], 'r.', label='GPS')
+# plt.plot(est_lon, est_lat, 'b-', label='EKF')
+# plt.xlabel('Longitude (deg)')
+# plt.ylabel('Latitude (deg)')
+# plt.title('GPS vs EKF Estimated Trajectory')
+# plt.legend()
+# plt.grid(True)
+# plt.axis('equal')
+# plt.show()
+
+# ------------------- Plotly map plot -----------------------------
+# Takes roughly 60-90 seconds to load the map tiles
+import plotly.graph_objects as go
+
+fig = go.Figure()
+
+# 1. Plot GPS Data (Red Markers)
+fig.add_trace(go.Scattermap(
+    lat=gps_lat[gps_fix],
+    lon=gps_lon[gps_fix],
+    mode='markers',
+    marker=dict(size=6, color='red'),
+    name='GPS'
+))
+
+# 2. Plot EKF Estimate (Blue Line)
+fig.add_trace(go.Scattermap(
+    lat=est_lat,
+    lon=est_lon,
+    mode='lines',
+    line=dict(width=3, color='blue'),
+    name='EKF'
+))
+
+# 3. Configure the Map Layout
+fig.update_layout(
+    map_style="open-street-map",  # Try "satellite" to check imagery alignment
+    map=dict(
+        center=dict(lat=gps_lat.mean(), lon=gps_lon.mean()),
+        zoom=18
+    ),
+    margin={"r":0,"t":40,"l":0,"b":0},
+    title="GPS vs EKF Estimated Trajectory"
+)
+
+fig.show()
+
+# ------------------- Contextily map plot -----------------------------
+# Takes roughly 2-3 minutes to load the map tiles
+# import contextily as cx
+
+# # 1. Create the plot
+# fig, ax = plt.subplots(figsize=(10, 10))
+
+# # 2. Plot data (Note: ax.plot still uses lon, lat order)
+# ax.plot(gps_lon[gps_fix], gps_lat[gps_fix], 'r.', markersize=4, label='GPS', alpha=0.5)
+# ax.plot(est_lon, est_lat, 'b-', linewidth=2, label='EKF')
+
+# # 3. Add the basemap
+# # crs="EPSG:4326" tells contextily your data is in standard Lat/Lon
+# cx.add_basemap(ax, crs="EPSG:4326", zoom=19, source=cx.providers.OpenStreetMap.Mapnik)
+
+# ax.set_xlabel('Longitude')
+# ax.set_ylabel('Latitude')
+# ax.set_title('GPS vs EKF Trajectory on Map')
+# ax.legend()
+# plt.show()
