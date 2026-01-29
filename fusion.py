@@ -106,7 +106,7 @@ for k in range(first_fix_idx + 1, N):
     # Update State 
     ekf.x = model.fx(ekf.x, imu[k], dt)
 
-    # Update Jacobian 
+    # Update State Jacobian Matrix 
     ekf.F = model.compute_F(ekf.x, imu[k], dt, acc_bias)
     
     # Predict Step

@@ -41,8 +41,8 @@ def fx(x, u, dt):
     return x
 
 # Measurement function to extract Position and Velocity
-def hx(x):
-    return np.hstack((x[0:3], x[3:6]))
+def hx(imu):
+    return np.hstack((imu[0:3], imu[3:6]))
 
 def H_jacobian(x):
     H = np.zeros((6, 16))
@@ -50,12 +50,12 @@ def H_jacobian(x):
     H[3:6, 3:6] = np.eye(3)
     return H
 
-# Jacobian of the process model
-def compute_F(x, u, dt, ba):
+# State Jacobian of the process model
+def compute_F(x, imu, dt, acc_bias):
     F = np.eye(16)
     q = x[6:10]
-    ba = x[10:13]
-    acc_b = u[3:6] - ba  
+    acc_bias = x[10:13]
+    acc_b = imu[3:6] - acc_bias  
     
     # 1. Position depends on Velocity
     F[0:3, 3:6] = np.eye(3) * dt
