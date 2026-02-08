@@ -4,6 +4,24 @@ import datetime
 deg2rad = np.pi / 180.0
 rad2deg = 180.0 / np.pi
 
+# utility_functions.py
+
+def euler_to_quat(roll, pitch, yaw):
+    # Standard conversion
+    cy = np.cos(yaw * 0.5)
+    sy = np.sin(yaw * 0.5)
+    cp = np.cos(pitch * 0.5)
+    sp = np.sin(pitch * 0.5)
+    cr = np.cos(roll * 0.5)
+    sr = np.sin(roll * 0.5)
+
+    q0 = cr * cp * cy + sr * sp * sy
+    q1 = sr * cp * cy - cr * sp * sy
+    q2 = cr * sp * cy + sr * cp * sy
+    q3 = cr * cp * sy - sr * sp * cy
+
+    return np.array([q0, q1, q2, q3])
+
 def calculate_position_rmse(est_lat, est_lon, meas_lat, meas_lon, gps_first_fix_idx):
     """
     Calculates the RMSE in meters between estimated and measured Lat/Lon.
@@ -82,7 +100,7 @@ def generate_nmea_gprmc(timestamp, lat, lon, speed_knots, course_deg):
 
     try:
         dt_obj = datetime.datetime.fromtimestamp(ts_safe)
-        time_str = dt_obj.strftime('%H%M%S')
+        time_str = dt_obj.strftime('%H%M%S.00')
         date_str = dt_obj.strftime('%d%m%y')
     except (ValueError, OSError):
         time_str = "000000000"
@@ -118,12 +136,12 @@ def generate_nmea_gpgga(timestamp, lat, lon, alt=0.0):
         minutes = (abs_val - degrees) * 60
         if is_lat:
             direction = "N" if value >= 0 else "S"
-            # Lat format: DDMM.MMMMMMM
-            return f"{degrees:02d}{minutes:012.7f},{direction}"
+            # Lat format: DDMM.MMMM
+            return f"{degrees:02d}{minutes:07.4f},{direction}"
         else:
             direction = "E" if value >= 0 else "W"
-            # Lon format: DDDMM.MMMMMMM
-            return f"{degrees:03d}{minutes:012.7f},{direction}"
+            # Lon format: DDDMM.MMMM
+            return f"{degrees:03d}{minutes:07.4f},{direction}"
 
     try:
         # Assuming timestamp is Unix. Convert to HHMMSS.SS
@@ -152,8 +170,8 @@ def remove_imu_bias(dataLog):
   acc_bias = np.zeros(3)
 
   print("Removing Static Bias...")
-  acc_bias[0:2] = np.mean(dataLog[:bias_samples, 0:2], axis=0) * 9.81
-  acc_bias[2] = 0.0 
+  # acc_bias[0:2] = np.mean(dataLog[:bias_samples, 0:2], axis=0) * 9.81
+  # acc_bias[2] = 0.0 
 
   gyro_bias = np.mean(dataLog[:bias_samples, 3:6], axis=0) * deg2rad
 
@@ -162,3 +180,46 @@ def remove_imu_bias(dataLog):
   print(f"Gyro Bias (X, Y, Z): {gyro_bias}")
 
   return acc_bias, gyro_bias
+
+def readNMEA(nmea_string):
+  """
+  Parses a NMEA string and returns a dictionary of relevant fields.
+  Currently supports GPRMC and GPGGA sentences.
+  """
+  if not nmea_string.startswith('$'):
+      return None
+
+  # Split the sentence and remove checksum
+  try:
+      sentence, checksum = nmea_string[1:].split('*')
+  except ValueError:
+      sentence = nmea_string[1:]
+  
+  fields = sentence.split(',')
+  msg_type = fields[0]
+
+  data = {}
+  if msg_type == "GPRMC":
+      data['time'] = fields[1]
+      data['status'] = fields[2]
+      data['lat'] = fields[3]
+      data['lat_dir'] = fields[4]
+      data['lon'] = fields[5]
+      data['lon_dir'] = fields[6]
+      data['speed'] = fields[7]
+      data['course'] = fields[8]
+      data['date'] = fields[9]
+  elif msg_type == "GPGGA":
+      data['time'] = fields[1]
+      data['lat'] = fields[2]
+      data['lat_dir'] = fields[3]
+      data['lon'] = fields[4]
+      data['lon_dir'] = fields[5]
+      data['fix_quality'] = fields[6]
+      data['num_satellites'] = fields[7]
+      data['hdop'] = fields[8]
+      data['altitude'] = fields[9]
+  else:
+      return None
+
+  return data

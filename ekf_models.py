@@ -51,31 +51,49 @@ def H_jacobian(x):
     return H
 
 # State Jacobian of the process model
-def compute_F(x, imu, dt, acc_bias):
+def compute_F_2(x, imu, dt, acc_bias_static): 
     F = np.eye(16)
+    
     q = x[6:10]
-    acc_bias = x[10:13]
-    acc_b = imu[3:6] - acc_bias  
+    q0, q1, q2, q3 = q
+    
+    # Current estimated bias
+    current_acc_bias = x[10:13]
+    
+    # Acceleration in body frame (measured - bias)
+    ax_b, ay_b, az_b = imu[3:6] - current_acc_bias
     
     # 1. Position depends on Velocity
     F[0:3, 3:6] = np.eye(3) * dt
     
-    # 2. Velocity depends on Attitude (The "Tilt-to-Accel" coupling)
-    # We use a skew-symmetric matrix of the rotated acceleration
+    # 2. Velocity depends on Attitude (Quaternion) - 3x4 Matrix
+    # We need d(Cbn * a_b) / dq
+    # This block is derived from the partial derivative of the rotation matrix
+    
+    # Row 1 (Velocity X)
+    F[3, 6] = 2 * (q2*az_b - q3*ay_b) * dt
+    F[3, 7] = 2 * (q2*ay_b + q3*az_b) * dt
+    F[3, 8] = 2 * (-2*q2*ax_b + q1*ay_b + q0*az_b) * dt
+    F[3, 9] = 2 * (-2*q3*ax_b - q0*ay_b + q1*az_b) * dt
+
+    # Row 2 (Velocity Y)
+    F[4, 6] = 2 * (-q1*az_b + q3*ax_b) * dt
+    F[4, 7] = 2 * (q1*ax_b - 2*q2*ay_b - q0*az_b) * dt
+    F[4, 8] = 2 * (q0*ax_b + q1*ay_b) * dt
+    F[4, 9] = 2 * (q0*ax_b - 2*q3*ay_b + q2*az_b) * dt
+
+    # Row 3 (Velocity Z)    
+    F[5, 6] = 2 * (q1*ay_b - q2*ax_b) * dt
+    # Simplified: 2*(q0*ay + q3*ax - 2*q1*az)
+    F[5, 7] = 2 * (q0*ay_b + q3*ax_b - 2*q1*az_b) * dt
+    F[5, 8] = 2 * (-q0*ax_b + q3*ay_b - 2*q2*az_b) * dt
+    F[5, 9] = 2 * (q1*ax_b + q2*ay_b) * dt
+
+    # 3. Velocity depends on Accel Bias (Correct in your original code)
     Cbn = uf.quat_to_dcm(q)
-    acc_n = Cbn @ acc_b
-    # Skew-symmetric matrix of acc_n helps map orientation errors to velocity errors
-    S = np.array([[0, -acc_n[2], acc_n[1]],
-                  [acc_n[2], 0, -acc_n[0]],
-                  [-acc_n[1], acc_n[0], 0]])
-    
-    # This maps the 3-degree-of-freedom orientation error into velocity
-    F[3:6, 6:9] = -S * dt 
-    
-    # 3. Velocity depends on Accel Bias
     F[3:6, 10:13] = -Cbn * dt
     
-    # 4. Attitude depends on Gyro Bias
+    # 4. Attitude depends on Gyro Bias (Correct in your original code)
     Xi = uf.quat_kinematic_matrix(q)
     F[6:10, 13:16] = -Xi * dt
   

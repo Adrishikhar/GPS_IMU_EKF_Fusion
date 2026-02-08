@@ -4,6 +4,7 @@ from scipy.io import loadmat
 from filterpy.kalman import ExtendedKalmanFilter
 import utility_functions as uf
 import ekf_models as model
+import pynmea2
 
 # ------------------- Data Preprocessing-----------------------
 
@@ -22,7 +23,8 @@ gz = np.deg2rad(dataLog[:, 5])
 
 gps_lat = dataLog[:, 6]
 gps_lon = dataLog[:, 7]
-gps_alt = dataLog[:, 8]
+#gps_alt = dataLog[:, 8]
+gps_alt = 10.0 * np.ones_like(gps_lat)  # Placeholder altitude
 
 gps_fix = dataLog[:, 9].astype(bool)
 
@@ -38,7 +40,9 @@ R_E = 6378137.0
 
 lat0 = gps_lat[gps_fix][0]
 lon0 = gps_lon[gps_fix][0]
-alt0 = gps_alt[gps_fix][0]
+# alt0 = gps_alt[gps_fix][0]
+# Altitude data takes time to reach, so assuming a constant for a basic filter, otherwise a dedicated GPS handler is needed
+alt0 = 10.0
 
 lat = gps_lat
 lon = gps_lon
@@ -64,35 +68,63 @@ imu = np.column_stack((gx, gy, gz, ax, ay, az))
 
 ekf = ExtendedKalmanFilter(dim_x=16, dim_z=6)
 
+# Start from first GPS fix, otherwise intial estimate is poor
+first_fix_idx = np.where(gps_fix == True)[0][0]
+
 acc_bias, gyro_bias = uf.remove_imu_bias(dataLog)
 
+ax0, ay0, az0 = np.mean(imu[0:20, 0:3], axis=0)
+initial_roll = np.arctan2(ay0, az0)
+initial_pitch = np.arctan2(-ax0, np.sqrt(ay0**2 + az0**2))
+
+# Calculate Yaw from GPS Velocity (Course)
+vx0 = gps_vel[first_fix_idx, 0]
+vy0 = gps_vel[first_fix_idx, 1]
+initial_yaw = np.arctan2(vy0, vx0)
+print(f"Initial Yaw (deg): {np.rad2deg(initial_yaw):.2f}")
+
+q_init = uf.euler_to_quat(initial_roll, initial_pitch, initial_yaw)
+
+
 ekf.x = np.zeros(16)
+ekf.x[0:3] = gps_pos[first_fix_idx]
 ekf.x[6] = 1.0
+ekf.x[6:10] = q_init
 ekf.x[10:13] = acc_bias
 ekf.x[13:16] = gyro_bias
 
 
 ekf.P = np.diag([
-    3, 3, 3,          # Position
+    2, 2, 2,          # Position
     1,1,1,            # Velocity
     0.1,0.1,0.1,0.1,  # Attitude Quaternion
     0.01,0.01,0.01,   # Accel Bias
     0.001,0.001,0.001 # Gyro Bias
 ])
-ekf.Q = np.eye(16) * 1e-3
-ekf.R = np.diag([5,5,5, 0.5,0.5,0.5])
+ekf.Q = np.diag([
+    0.1**2, 0.1**2, 0.1**2,               # x, y, z
+    0.2**2, 0.2**2, 0.2**2,               # vx, vy, vz
+    0.01**2, 0.01**2, 0.01**2,0.01**2,    # q0, q1, q2, q3
+    1e-6**2, 1e-6**2, 1e-6**2,            # Accel bias
+    1e-10**2, 1e-10**2, 1e-10**2          # Gyro bias
+])
+ekf.R = np.diag([
+    2**2, 2**2, 100.0,  # X, Y, Z (High variance on Z allows it to float)
+    2, 2, 2   # VX, VY, VZ
+])
 
 
 est_pos = np.zeros((N, 3))
 ms_to_knots = 1.94384
 
-
-# Start from first GPS fix, otherwise intial estimate is poor
-first_fix_idx = np.where(gps_fix == True)[0][0]
-
-ekf.x[0:3] = gps_pos[first_fix_idx]
+# --------------------------------------------------------------
 
 print("--- Starting NMEA Stream ---")
+# check = []
+
+est_lat = np.full(N, lat0)
+est_lon = np.full(N, lon0)
+last_gps_pos = np.zeros(3)
 
 # ------------------- Run EKF --------------------
 for k in range(first_fix_idx + 1, N):
@@ -107,10 +139,13 @@ for k in range(first_fix_idx + 1, N):
     ekf.x = model.fx(ekf.x, imu[k], dt)
 
     # Update State Jacobian Matrix 
-    ekf.F = model.compute_F(ekf.x, imu[k], dt, acc_bias)
+    ekf.F = model.compute_F_2(ekf.x, imu[k], dt, acc_bias)
     
-    # Predict Step
-    ekf.predict()
+    # Predict Covariance
+    ekf.P = ekf.F @ ekf.P @ ekf.F.T + ekf.Q
+
+    # Normalize quaternion
+    ekf.x[6:10] = uf.normalize_quat(ekf.x[6:10])
 
     # NMEA String Generation
     vx, vy = gps_vel[k, 0], gps_vel[k, 1]
@@ -118,22 +153,40 @@ for k in range(first_fix_idx + 1, N):
     speed_knots = speed_ms * ms_to_knots
     course = np.rad2deg(np.arctan2(vy, vx)) % 360
 
-    nmea_string = uf.generate_nmea_gpgga(timeLog[k]*1e-6, gps_lat[k], gps_lon[k])
-    # nmea_string = uf.generate_nmea_gprmc(timeLog[k]*1e-6, gps_lat[k], gps_lon[k], speed_knots, course)
-    print(nmea_string) 
+    est_lat[k] = lat0 + rad2deg * ekf.x[0] / R_E
+    est_lon[k] = lon0 + rad2deg * ekf.x[1] / (R_E * np.cos(deg2rad * lat0))
+
+    nmea_string = uf.generate_nmea_gpgga(timeLog[k]*1e-6, est_lat[k], est_lon[k])
+    # try:
+    #     msg = pynmea2.parse(nmea_string)
+        
+    #     check.append({
+    #         'lat': msg.latitude, 
+    #         'lon': msg.longitude
+    #     })
+    #     print(msg)
+    # except pynmea2.ParseError as e:
+    #     print(f"Parse error: {e}")
+    #     continue
 
     # Update Step (GPS)
-    if gps_fix[k]:
+
+    current_gps_pos = gps_pos[k]
+    is_new_measurement = not np.array_equal(current_gps_pos, last_gps_pos)
+
+    if gps_fix[k] and is_new_measurement:
+        # Measurement vector
         z = np.hstack((gps_pos[k], gps_vel[k]))
+
         ekf.update(z, HJacobian=model.H_jacobian, Hx=model.hx)
+
+        last_gps_pos = current_gps_pos
+        print(f"GPS Update at k={k}: {z[0:3]}")
 
     est_pos[k] = ekf.x[0:3]
 
 
 # Convert estimated NED --> Lat/Lon
-
-est_lat = lat0 + rad2deg * est_pos[:,0] / R_E
-est_lon = lon0 + rad2deg * est_pos[:,1] / (R_E * np.cos(deg2rad * lat0))
 
 rmse_val = uf.calculate_position_rmse(est_lat, est_lon, gps_lat, gps_lon, first_fix_idx)
 print(f"Position RMSE: {rmse_val:.2f} meters")
@@ -173,6 +226,8 @@ fig.add_trace(go.Scattermap(
 fig.add_trace(go.Scattermap(
     lat=est_lat,
     lon=est_lon,
+    # lat = [data['lat'] for data in check],
+    # lon = [data['lon'] for data in check],
     mode='lines',
     line=dict(width=3, color='blue'),
     name='EKF'
