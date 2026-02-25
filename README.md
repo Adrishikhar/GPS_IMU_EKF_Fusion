@@ -42,7 +42,7 @@ When a GPS fix is detected, the filter performs a measurement update:
 - **Innovation:** $y = z - h(x)$
 - **Update:** The EKF uses the 6D measurement to correct the 16D state via the Kalman Gain.
 
----
+## ![Fused trajectory plot (Around IISER Bhopal's MOON Lab)](assets/fused_trajectory.png)
 
 ## 🚀 Getting Started
 
